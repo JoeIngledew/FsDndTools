@@ -76,7 +76,11 @@ let fAttacks = [
     (firstAtk, ohDmgMod);
     (secondAtk, ohDmgMod); ]
 
-let nAttacks = fAttacks |> List.skip 1
+let nAttacks = [
+    (firstAtk, mhDmgMod);
+    (secondAtk, mhDmgMod);
+    (firstAtk, ohDmgMod);
+    (secondAtk, ohDmgMod); ]
 
 let calcDamage dmgBonus =
     let nRoll = four()
@@ -153,7 +157,7 @@ let getBoolParam (req : HttpRequestMessage) (key : string) =
         req.GetQueryNameValuePairs()
         |> Seq.tryFind (fun q -> q.Key = key)
     match s with 
-    | Some x -> bool x.Value
+    | Some x -> x.Value == "true"
     | None -> false
 
 let zeroIfNone x =
@@ -172,5 +176,5 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
         | None -> return req.CreateResponse(HttpStatusCode.BadRequest, "AC is a required parameter")
         | Some ac' ->
             let resp = fullAtk ac' modifier stacks frenzy |> fullResultToOutput
-            req.CreateResponse(HttpStatusCode.OK, resp) } |> Async.RunSynchronously
+            return req.CreateResponse(HttpStatusCode.OK, resp) } |> Async.RunSynchronously
 
