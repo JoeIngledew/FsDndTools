@@ -51,7 +51,7 @@ type Output = {
 }
 
 let attackToString atk =
-    sprintf "Rolled an %i (nat %i) resulting in a %s dealing %i damage (d4 rolled %i)" atk.Natural atk.ModifiedRoll atk.Descriptor atk.ModifiedDamage atk.DamageRoll
+    sprintf "Rolled a %i (nat %i) resulting in a %s dealing %i damage (d4 rolled %i)" atk.ModifiedRoll atk.Natural atk.Descriptor atk.ModifiedDamage atk.DamageRoll
 
 let fullResultToOutput fr = 
     { AttackResult = fr.Results |> Array.map attackToString 
@@ -69,14 +69,14 @@ let mutable rand = new System.Random()
 let twenty () = rand.Next(1, 21)
 let four () = rand.Next(1, 5)
 
-let fAttacks = [
+let fAttacks () = [
     (firstAtk, mhDmgMod);
     (firstAtk, mhDmgMod);
     (secondAtk, mhDmgMod);
     (firstAtk, ohDmgMod);
     (secondAtk, ohDmgMod); ]
 
-let nAttacks = [
+let nAttacks () = [
     (firstAtk, mhDmgMod);
     (secondAtk, mhDmgMod);
     (firstAtk, ohDmgMod);
@@ -88,7 +88,7 @@ let calcDamage dmgBonus =
     nRoll,mDmg
 
 let confirm ac atkBonus =
-    if (twenty() + atkBonus) >= ac then true else false
+    (twenty() + atkBonus) >= ac
 
 let doAttack ac atkBonus dmgBonus =
     let natRoll = twenty()
@@ -127,13 +127,18 @@ let toReadableDto (rs, s) =
       FinalStacks = s
       TotalDamage = atkRes |> Array.sumBy (fun x -> x.ModifiedDamage) }
 
-let fullAtk ac modifier initStack frenzy =
-    let attacks = if frenzy then fAttacks else nAttacks
+let fullAtk ac modifier initStack frenzy (log : TraceWriter) =
+    let attacks = if frenzy then fAttacks () else nAttacks () // for some reason only works if they're functions not 'values' 
+    // log.Info(sprintf "Using atk pattern: %A" attacks)
     let rec loop atkLeft results bStacks =
         match atkLeft with
-        | [] -> results, bStacks
+        | [] -> 
+            // log.Info(sprintf "Finished atks")
+            results, bStacks
         | (atkMod,dmgMod)::xs ->
+            // log.Info(sprintf "Calc atk with mod %A dmg %A" atkMod dmgMod)
             let res = doAttack ac (modifier + atkMod + bStacks) (dmgMod + bStacks)
+            // log.Info(sprintf "Atk res: %A" res)
             match res with
             | Crit _ -> loop ((atkMod,dmgMod)::xs) (res::results) (bStacks + 1)
             | ThreatHit _ -> loop ((atkMod,dmgMod)::xs) (res::results) bStacks
@@ -169,13 +174,17 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
     async {
         rand <- new System.Random()        
         let ac = getStringParam req "ac"
+        // log.Info(sprintf "Got AC: %A" ac)
         let modifier = getStringParam req "mod" |> zeroIfNone
+        // log.Info(sprintf "Got Mod: %A" modifier)
         let stacks = getStringParam req "stacks" |> zeroIfNone
+        // log.Info(sprintf "Got stacks: %A" stacks)
         let frenzy = getBoolParam req "frenzy"
+        // log.Info(sprintf "Got frenzy: %A" frenzy)
 
         match ac with
         | None -> return req.CreateResponse(HttpStatusCode.BadRequest, "AC is a required parameter")
         | Some ac' ->
-            let resp = fullAtk ac' modifier stacks frenzy |> fullResultToOutput
+            let resp = fullAtk ac' modifier stacks frenzy log |> fullResultToOutput
             return req.CreateResponse(HttpStatusCode.OK, resp) } |> Async.RunSynchronously
 
