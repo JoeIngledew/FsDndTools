@@ -157,7 +157,7 @@ let getBoolParam (req : HttpRequestMessage) (key : string) =
         req.GetQueryNameValuePairs()
         |> Seq.tryFind (fun q -> q.Key = key)
     match s with 
-    | Some x -> x.Value == "true"
+    | Some x -> x.Value = "true"
     | None -> false
 
 let zeroIfNone x =
