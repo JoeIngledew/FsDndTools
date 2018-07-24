@@ -65,7 +65,7 @@ let ohDmgMod = 4
 let critLowerBound = 15
 let critMultiplier = 4
 
-let rand = new System.Random()
+let mutable rand = new System.Random()
 let twenty () = rand.Next(1, 21)
 let four () = rand.Next(1, 5)
 
@@ -167,6 +167,7 @@ let zeroIfNone x =
 
 let Run(req: HttpRequestMessage, log: TraceWriter) =
     async {
+        rng <- new System.Random()        
         let ac = getStringParam req "ac"
         let modifier = getStringParam req "mod" |> zeroIfNone
         let stacks = getStringParam req "stacks" |> zeroIfNone
