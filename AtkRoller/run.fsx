@@ -50,6 +50,15 @@ type Output = {
     [<JsonProperty>] mutable TotalDamage : int
 }
 
+[<CLIMutable>]
+[<JsonObject(MemberSerialization = MemberSerialization.OptIn)>]
+type Request = {
+    [<JsonProperty>] mutable Ac : int
+    [<JsonProperty>] mutable Stacks : System.Nullable<int>
+    [<JsonProperty>] mutable Modifier : System.Nullable<int>
+    [<JsonProperty>] mutable IsFrenzy : System.Nullable<bool>
+}
+
 let attackToString atk =
     sprintf "Rolled a %i (nat %i) resulting in a %s dealing %i damage (d4 rolled %i)" atk.ModifiedRoll atk.Natural atk.Descriptor atk.ModifiedDamage atk.DamageRoll
 
@@ -147,44 +156,31 @@ let fullAtk ac modifier initStack frenzy (log : TraceWriter) =
     |> reverseResults
     |> toReadableDto
 
-let toIntOption (o : KeyValuePair<string,string> option) =
-    match o with
-    | Some x -> Some (int x.Value)
-    | None -> None
-
-let getStringParam (req : HttpRequestMessage) (key : string) =
-    req.GetQueryNameValuePairs()
-    |> Seq.tryFind (fun q -> q.Key = key)
-    |> toIntOption
-
-let getBoolParam (req : HttpRequestMessage) (key : string) =
-    let s =
-        req.GetQueryNameValuePairs()
-        |> Seq.tryFind (fun q -> q.Key = key)
-    match s with 
-    | Some x -> x.Value = "true"
-    | None -> false
-
-let zeroIfNone x =
-    match x with
-    | None -> 0
-    | Some y -> y
+let valueIfNone replacementVal (x : System.Nullable<'a>) =
+    if x = System.Nullable() then replacementVal else x.Value
 
 let Run(req: HttpRequestMessage, log: TraceWriter) =
     async {
-        rand <- new System.Random()        
-        let ac = getStringParam req "ac"
-        // log.Info(sprintf "Got AC: %A" ac)
-        let modifier = getStringParam req "mod" |> zeroIfNone
-        // log.Info(sprintf "Got Mod: %A" modifier)
-        let stacks = getStringParam req "stacks" |> zeroIfNone
-        // log.Info(sprintf "Got stacks: %A" stacks)
-        let frenzy = getBoolParam req "frenzy"
-        // log.Info(sprintf "Got frenzy: %A" frenzy)
+        let! content =
+            req.Content.ReadAsStringAsync()
+            |> Async.AwaitTask
+        try
+            let input = JsonConvert.DeserializeObject<Request>(content)
 
-        match ac with
-        | None -> return req.CreateResponse(HttpStatusCode.BadRequest, "AC is a required parameter")
-        | Some ac' ->
-            let resp = fullAtk ac' modifier stacks frenzy log |> fullResultToOutput
-            return req.CreateResponse(HttpStatusCode.OK, resp) } |> Async.RunSynchronously
+            rand <- new System.Random()        
+            let ac = input.Ac
+            // log.Info(sprintf "Got AC: %A" ac)
+            let modifier = input.Modifier |> valueIfNone 0 
+            // log.Info(sprintf "Got Mod: %A" modifier)
+            let stacks = input.Stacks |> valueIfNone 0
+            // log.Info(sprintf "Got stacks: %A" stacks)
+            let frenzy = input.IsFrenzy |> valueIfNone false
+            // log.Info(sprintf "Got frenzy: %A" frenzy)
+
+            let resp = fullAtk ac modifier stacks frenzy log |> fullResultToOutput
+            return req.CreateResponse(HttpStatusCode.OK, resp) 
+        with ex ->
+            log.Info(ex.Message)
+            return req.CreateResponse(HttpStatusCode.BadRequest, "Looks like the input was malformed!")
+    } |> Async.RunSynchronously
 
