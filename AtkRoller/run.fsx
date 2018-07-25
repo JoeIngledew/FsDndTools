@@ -52,11 +52,20 @@ type Output = {
 
 [<CLIMutable>]
 [<JsonObject(MemberSerialization = MemberSerialization.OptIn)>]
+type InAtk = {
+    [<JsonProperty>] mutable AttackBonus : int
+    [<JsonProperty>] mutable DamageBonus : int
+}
+
+[<CLIMutable>]
+[<JsonObject(MemberSerialization = MemberSerialization.OptIn)>]
 type Request = {
     [<JsonProperty>] mutable Ac : int
     [<JsonProperty>] mutable Stacks : System.Nullable<int>
     [<JsonProperty>] mutable Modifier : System.Nullable<int>
-    [<JsonProperty>] mutable IsFrenzy : System.Nullable<bool>
+    [<JsonProperty>] mutable Attacks : InAtk []
+    [<JsonProperty>] mutable CritMinimum : System.Nullable<int>
+    [<JsonProperty>] mutable CritMultiplier : System.Nullable<int>
 }
 
 let attackToString atk =
@@ -67,29 +76,9 @@ let fullResultToOutput fr =
       FinalStacks = fr.FinalStacks
       TotalDamage = fr.TotalDamage }
 
-let firstAtk = 12
-let secondAtk = 7
-let mhDmgMod = 7
-let ohDmgMod = 4
-let critLowerBound = 15
-let critMultiplier = 4
-
 let mutable rand = new System.Random()
 let twenty () = rand.Next(1, 21)
 let four () = rand.Next(1, 5)
-
-let fAttacks () = [
-    (firstAtk, mhDmgMod);
-    (firstAtk, mhDmgMod);
-    (secondAtk, mhDmgMod);
-    (firstAtk, ohDmgMod);
-    (secondAtk, ohDmgMod); ]
-
-let nAttacks () = [
-    (firstAtk, mhDmgMod);
-    (secondAtk, mhDmgMod);
-    (firstAtk, ohDmgMod);
-    (secondAtk, ohDmgMod); ]
 
 let calcDamage dmgBonus =
     let nRoll = four()
@@ -99,7 +88,7 @@ let calcDamage dmgBonus =
 let confirm ac atkBonus =
     (twenty() + atkBonus) >= ac
 
-let doAttack ac atkBonus dmgBonus =
+let doAttack ac atkBonus dmgBonus critLowerBound critMultiplier =
     let natRoll = twenty()
     let mRoll = natRoll + atkBonus
     match (mRoll >= ac),(natRoll >= critLowerBound) with
@@ -136,18 +125,14 @@ let toReadableDto (rs, s) =
       FinalStacks = s
       TotalDamage = atkRes |> Array.sumBy (fun x -> x.ModifiedDamage) }
 
-let fullAtk ac modifier initStack frenzy (log : TraceWriter) =
-    let attacks = if frenzy then fAttacks () else nAttacks () // for some reason only works if they're functions not 'values' 
-    // log.Info(sprintf "Using atk pattern: %A" attacks)
+let fullAtk ac modifier initStack attacks critLowerBound critMultiplier =
+    // let attacks = if frenzy then fAttacks () else nAttacks () // for some reason only works if they're functions not 'values' 
     let rec loop atkLeft results bStacks =
         match atkLeft with
         | [] -> 
-            // log.Info(sprintf "Finished atks")
             results, bStacks
         | (atkMod,dmgMod)::xs ->
-            // log.Info(sprintf "Calc atk with mod %A dmg %A" atkMod dmgMod)
-            let res = doAttack ac (modifier + atkMod + bStacks) (dmgMod + bStacks)
-            // log.Info(sprintf "Atk res: %A" res)
+            let res = doAttack ac (modifier + atkMod + bStacks) (dmgMod + bStacks) critLowerBound critMultiplier
             match res with
             | Crit _ -> loop ((atkMod,dmgMod)::xs) (res::results) (bStacks + 1)
             | ThreatHit _ -> loop ((atkMod,dmgMod)::xs) (res::results) bStacks
@@ -159,6 +144,9 @@ let fullAtk ac modifier initStack frenzy (log : TraceWriter) =
 let valueIfNone replacementVal (x : System.Nullable<'a>) =
     if x = System.Nullable() then replacementVal else x.Value
 
+let toAtkTuple atk =
+    atk.AttackBonus, atk.DamageBonus
+
 let Run(req: HttpRequestMessage, log: TraceWriter) =
     async {
         let! content =
@@ -169,15 +157,13 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
 
             rand <- new System.Random()        
             let ac = input.Ac
-            // log.Info(sprintf "Got AC: %A" ac)
             let modifier = input.Modifier |> valueIfNone 0 
-            // log.Info(sprintf "Got Mod: %A" modifier)
             let stacks = input.Stacks |> valueIfNone 0
-            // log.Info(sprintf "Got stacks: %A" stacks)
-            let frenzy = input.IsFrenzy |> valueIfNone false
-            // log.Info(sprintf "Got frenzy: %A" frenzy)
+            let critLowerBound = input.CritMinimum |> valueIfNone 20
+            let critMulti = input.CritMultiplier |> valueIfNone 1
+            let attacks = input.Attacks |> Array.map toAtkTuple |> Array.toList
 
-            let resp = fullAtk ac modifier stacks frenzy log |> fullResultToOutput
+            let resp = fullAtk ac modifier stacks attacks critLowerBound critMulti |> fullResultToOutput
             return req.CreateResponse(HttpStatusCode.OK, resp) 
         with ex ->
             log.Info(ex.Message)
