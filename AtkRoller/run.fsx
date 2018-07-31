@@ -164,7 +164,7 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
             let attacks = input.Attacks |> Array.map toAtkTuple |> Array.toList
 
             let resp = fullAtk ac modifier stacks attacks critLowerBound critMulti |> fullResultToOutput
-            return req.CreateResponse(HttpStatusCode.OK, resp) 
+            return req.CreateResponse(HttpStatusCode.OK, resp)
         with ex ->
             log.Info(ex.Message)
             return req.CreateResponse(HttpStatusCode.BadRequest, "Looks like the input was malformed!")

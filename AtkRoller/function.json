@@ -5,7 +5,8 @@
       "authLevel": "function",
       "name": "req",
       "type": "httpTrigger",
-      "direction": "in"
+      "direction": "in",
+      "webHookType": "genericJson"
     },
     {
       "name": "res",
