@@ -126,7 +126,6 @@ let toReadableDto (rs, s) =
       TotalDamage = atkRes |> Array.sumBy (fun x -> x.ModifiedDamage) }
 
 let fullAtk ac modifier initStack attacks critLowerBound critMultiplier =
-    // let attacks = if frenzy then fAttacks () else nAttacks () // for some reason only works if they're functions not 'values' 
     let rec loop atkLeft results bStacks =
         match atkLeft with
         | [] -> 
@@ -147,12 +146,17 @@ let valueIfNone replacementVal (x : System.Nullable<'a>) =
 let toAtkTuple atk =
     atk.AttackBonus, atk.DamageBonus
 
+let tryGetHeader (hName : string) (req : HttpRequestMessage) =
+    req.GetQueryNameValuePairs()
+    |> Seq.tryFind (fun kv -> kv.Key = hName)
+
 let Run(req: HttpRequestMessage, log: TraceWriter) =
     async {
         let! content =
             req.Content.ReadAsStringAsync()
             |> Async.AwaitTask
         try
+            let origin = tryGetHeader "Origin" req
             let input = JsonConvert.DeserializeObject<Request>(content)
 
             rand <- new System.Random()        
@@ -164,7 +168,13 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
             let attacks = input.Attacks |> Array.map toAtkTuple |> Array.toList
 
             let resp = fullAtk ac modifier stacks attacks critLowerBound critMulti |> fullResultToOutput
-            return req.CreateResponse(HttpStatusCode.OK, resp)
+            let httpResponse = req.CreateResponse(HttpStatusCode.OK, resp)
+            if (origin.IsSome) then
+                httpResponse.Headers.Add("Access-Control-Allow-Credentials", "true")
+                httpResponse.Headers.Add("Access-Control-Allow-Origin", origin.Value.Value)
+                httpResponse.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                return httpResponse
+            else return httpResponse
         with ex ->
             log.Info(ex.Message)
             return req.CreateResponse(HttpStatusCode.BadRequest, "Looks like the input was malformed!")
