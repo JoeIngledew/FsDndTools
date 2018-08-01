@@ -146,35 +146,34 @@ let valueIfNone replacementVal (x : System.Nullable<'a>) =
 let toAtkTuple atk =
     atk.AttackBonus, atk.DamageBonus
 
-let tryGetHeader (hName : string) (req : HttpRequestMessage) =
-    req.GetQueryNameValuePairs()
-    |> Seq.tryFind (fun kv -> kv.Key = hName)
-
 let Run(req: HttpRequestMessage, log: TraceWriter) =
     async {
         let! content =
             req.Content.ReadAsStringAsync()
             |> Async.AwaitTask
         try
-            let origin = tryGetHeader "Origin" req
             let input = JsonConvert.DeserializeObject<Request>(content)
-
+            log.Info(sprintf "Processing the following request: %A" input)
             rand <- new System.Random()        
             let ac = input.Ac
             let modifier = input.Modifier |> valueIfNone 0 
             let stacks = input.Stacks |> valueIfNone 0
             let critLowerBound = input.CritMinimum |> valueIfNone 20
             let critMulti = input.CritMultiplier |> valueIfNone 1
+
+            log.Info("Got the following numerical vals:")
+            log.Info(sprintf "AC: %i" ac)
+            log.Info(sprintf "Modifier: %i" modifier)
+            log.Info(sprintf "Stacks: %i" stacks)
+            log.Info(sprintf "CLB: %i" critLowerBound)
+            log.Info(sprintf "Multi: %i" critMulti)
+
             let attacks = input.Attacks |> Array.map toAtkTuple |> Array.toList
 
+            log.Info(sprintf "Got these attacks: %A" attacks)
+
             let resp = fullAtk ac modifier stacks attacks critLowerBound critMulti |> fullResultToOutput
-            let httpResponse = req.CreateResponse(HttpStatusCode.OK, resp)
-            if (origin.IsSome) then
-                httpResponse.Headers.Add("Access-Control-Allow-Credentials", "true")
-                httpResponse.Headers.Add("Access-Control-Allow-Origin", origin.Value.Value)
-                httpResponse.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                return httpResponse
-            else return httpResponse
+            return req.CreateResponse(HttpStatusCode.OK, resp)
         with ex ->
             log.Info(ex.Message)
             return req.CreateResponse(HttpStatusCode.BadRequest, "Looks like the input was malformed!")
