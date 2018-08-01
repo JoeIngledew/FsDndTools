@@ -173,7 +173,6 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
             log.Info(sprintf "Got these attacks: %A" attacks)
 
             let resp = fullAtk ac modifier stacks attacks critLowerBound critMulti |> fullResultToOutput
-
             log.Info(sprintf "Produced response: %A" resp)
 
             return req.CreateResponse(HttpStatusCode.OK, resp)
