@@ -91,13 +91,13 @@ let confirm ac atkBonus =
 let doAttack ac atkBonus dmgBonus critLowerBound critMultiplier =
     let natRoll = twenty()
     let mRoll = natRoll + atkBonus
-    match (mRoll >= ac),(natRoll >= critLowerBound) with
-    | true, true -> 
+    match (natRoll > 1), (mRoll >= ac),(natRoll >= critLowerBound) with
+    | true, true, true -> 
         let natDmg,mDmg = calcDamage (dmgBonus+1) // plus one for b stack
         if confirm ac atkBonus then             
             Crit (natRoll, mRoll,natDmg,(mDmg*critMultiplier))
         else ThreatHit(natRoll, mRoll, natDmg, mDmg)
-    | true, false ->
+    | true, true, false ->
         let natDmg,mDmg = calcDamage dmgBonus
         Hit (natRoll, mRoll, natDmg, mDmg)
     | _ -> Miss (natRoll, mRoll)
@@ -125,13 +125,15 @@ let toReadableDto (rs, s) =
       FinalStacks = s
       TotalDamage = atkRes |> Array.sumBy (fun x -> x.ModifiedDamage) }
 
-let fullAtk ac modifier initStack attacks critLowerBound critMultiplier =
+let fullAtk ac modifier initStack attacks critLowerBound critMultiplier (log: TraceWriter) =
     let rec loop atkLeft results bStacks =
         match atkLeft with
         | [] -> 
             results, bStacks
         | (atkMod,dmgMod)::xs ->
             let res = doAttack ac (modifier + atkMod + bStacks) (dmgMod + bStacks) critLowerBound critMultiplier
+            log.Info(sprintf "Did attack with mod %i dmg %i stacks at %i" atkMod dmgMod bStacks)
+            log.Info(sprintf "Result: %A" res)
             match res with
             | Crit _ -> loop ((atkMod,dmgMod)::xs) (res::results) (bStacks + 1)
             | ThreatHit _ -> loop ((atkMod,dmgMod)::xs) (res::results) bStacks
@@ -172,7 +174,7 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
 
             log.Info(sprintf "Got these attacks: %A" attacks)
 
-            let resp = fullAtk ac modifier stacks attacks critLowerBound critMulti |> fullResultToOutput
+            let resp = fullAtk ac modifier stacks attacks critLowerBound critMulti log |> fullResultToOutput
             log.Info(sprintf "Produced response: %A" resp)
 
             return req.CreateResponse(HttpStatusCode.OK, resp)
