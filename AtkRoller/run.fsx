@@ -153,7 +153,7 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
             |> Async.AwaitTask
         try
             let input = JsonConvert.DeserializeObject<Request>(content)
-            log.Info(sprintf "Processing the following request: %A" input)
+            //log.Info(sprintf "Processing the following request: %A" input)
             rand <- new System.Random()        
             let ac = input.Ac
             let modifier = input.Modifier |> valueIfNone 0 
@@ -173,6 +173,9 @@ let Run(req: HttpRequestMessage, log: TraceWriter) =
             log.Info(sprintf "Got these attacks: %A" attacks)
 
             let resp = fullAtk ac modifier stacks attacks critLowerBound critMulti |> fullResultToOutput
+
+            log.Info(sprintf "Produced response: %A" resp)
+
             return req.CreateResponse(HttpStatusCode.OK, resp)
         with ex ->
             log.Info(ex.Message)
